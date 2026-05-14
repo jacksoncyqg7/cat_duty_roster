@@ -1,25 +1,40 @@
 <template>
   <div class="calendar-page">
     <header class="top-bar">
-      <button class="profile-btn" @click="showProfile = true">
-        <img
-          class="profile-btn-image"
-          :src="currentUser.profilePic"
-          :alt="`${currentUser.name} profile picture`"
-        />
-      </button>
-
       <h2>Cat Roster</h2>
 
       <button class="create-btn" @click="logout">Exit</button>
     </header>
 
-    <section v-if="showProfile" class="profile-panel">
-      <button class="close-btn" @click="showProfile = false">x</button>
-      <h3>{{ currentUser.name }}</h3>
-      <p>Consecutive duty days: {{ currentUser.consecutiveDutyDays }}</p>
-      <p>Completion cycle: {{ currentUser.completionCycle }}</p>
-      <p>Days left: {{ currentUser.daysLeft }}</p>
+    <section class="progress-strip">
+      <div class="progress-header">
+        <img
+          class="progress-avatar"
+          :src="currentUser.profilePic"
+          :alt="`${currentUser.name} profile picture`"
+        />
+        <div>
+          <p class="progress-label">Current duty tracker</p>
+          <h3>{{ currentUser.name }}</h3>
+        </div>
+      </div>
+
+      <div class="progress-metrics">
+        <article class="progress-metric">
+          <span>Consecutive days</span>
+          <strong>{{ currentUser.consecutiveDutyDays }}</strong>
+        </article>
+
+        <article class="progress-metric">
+          <span>Completion cycle</span>
+          <strong>{{ currentUser.completionCycle }}</strong>
+        </article>
+
+        <article class="progress-metric">
+          <span>Days left</span>
+          <strong>{{ currentUser.daysLeft }}</strong>
+        </article>
+      </div>
     </section>
 
     <div class="calendar-controls">
@@ -105,7 +120,6 @@ import {
 
 const selectedDate = ref(null);
 const checkedTasks = ref([]);
-const showProfile = ref(false);
 const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const currentUser = computed(() => rosterStore.selectedProfile);
@@ -185,7 +199,6 @@ const openChecklist = (date) => {
 };
 
 const logout = () => {
-  showProfile.value = false;
   selectedDate.value = null;
   clearSelectedProfile();
 };
@@ -209,34 +222,22 @@ const submitDuty = () => {
 }
 
 .top-bar {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 12px;
+  min-height: 48px;
 }
 
 .top-bar h2 {
   margin: 0;
-}
-
-.profile-btn {
-  width: 48px;
-  height: 48px;
-  padding: 0;
-  overflow: hidden;
-  border: none;
-  border-radius: 50%;
-  background: white;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
-}
-
-.profile-btn-image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  text-align: center;
 }
 
 .create-btn {
+  position: absolute;
+  right: 0;
   min-width: 48px;
   height: 48px;
   border: none;
@@ -248,21 +249,64 @@ const submitDuty = () => {
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
 }
 
-.profile-panel {
-  position: relative;
-  margin: 16px 0;
+.progress-strip {
+  margin-top: 16px;
   padding: 16px;
-  border-radius: 18px;
-  background: white;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #ffffff 0%, #ffedd5 100%);
+  box-shadow: 0 12px 24px rgba(249, 115, 22, 0.12);
 }
 
-.close-btn {
-  position: absolute;
-  right: 12px;
-  top: 8px;
-  border: none;
-  background: none;
-  font-size: 24px;
+.progress-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.progress-header h3 {
+  margin: 4px 0 0;
+}
+
+.progress-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid rgba(255, 255, 255, 0.95);
+}
+
+.progress-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #9a3412;
+}
+
+.progress-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.progress-metric {
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.progress-metric span {
+  display: block;
+  font-size: 12px;
+  color: #7c6f64;
+}
+
+.progress-metric strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 22px;
+  color: #431407;
 }
 
 .calendar-grid {
@@ -394,6 +438,10 @@ const submitDuty = () => {
 }
 
 @media (max-width: 640px) {
+  .progress-metrics {
+    grid-template-columns: 1fr;
+  }
+
   .calendar-controls {
     align-items: stretch;
     flex-direction: column;

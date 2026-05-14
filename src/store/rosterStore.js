@@ -1,7 +1,7 @@
 import { reactive } from "vue";
 import { profiles } from "../data/profile";
 
-const STORAGE_VERSION = 8;
+const STORAGE_VERSION = 9;
 
 const createDefaultState = () => ({
   storageVersion: STORAGE_VERSION,

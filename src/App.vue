@@ -1,5 +1,5 @@
 <template>
-  <LoginPage v-if="!rosterStore.selectedProfile" @login="goCalendar" />
+  <LoginPage v-if="!rosterStore.selectedProfile" />
   <CalendarPage v-else />
 </template>
 
@@ -7,6 +7,4 @@
 import LoginPage from "./pages/LoginPage.vue";
 import CalendarPage from "./pages/CalendarPage.vue";
 import { rosterStore } from "./store/rosterStore";
-
-const goCalendar = () => {};
 </script>

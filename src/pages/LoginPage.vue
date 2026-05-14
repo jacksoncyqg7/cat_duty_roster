@@ -20,11 +20,8 @@
 <script setup>
 import { rosterStore, selectProfile } from "../store/rosterStore";
 
-const emit = defineEmits(["login"]);
-
 const handleSelect = (profile) => {
   selectProfile(profile);
-  emit("login");
 };
 </script>
 
