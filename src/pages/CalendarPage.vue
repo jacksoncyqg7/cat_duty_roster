@@ -7,17 +7,18 @@
     </header>
 
     <section class="progress-strip">
-      <div class="progress-header">
+      <button class="progress-header profile-trigger" type="button" @click="openProfileEditor">
         <img
           class="progress-avatar"
-          :src="currentUser.profilePic"
+          :src="resolveProfilePic(currentUser.profilePic)"
           :alt="`${currentUser.name} profile picture`"
         />
         <div>
           <p class="progress-label">Current duty tracker</p>
           <h3>{{ currentUser.name }}</h3>
+          <p class="profile-hint">Tap to edit name, PIN and colour</p>
         </div>
-      </div>
+      </button>
 
       <div class="progress-metrics">
         <article class="progress-metric">
@@ -77,13 +78,13 @@
           v-for="day in selectedMonth.days"
           :key="day.date"
           class="day-card"
-          :class="{ completed: !!rosterStore.duties[day.date] }"
+          :class="getDutyCardClass(day.date)"
           :style="getDutyCardStyle(day.date)"
           @click="openChecklist(day.date)"
         >
           <strong>{{ day.day }}</strong>
-          <span v-if="rosterStore.duties[day.date]">
-            {{ rosterStore.duties[day.date].profileName }}
+          <span v-if="rosterState.duties[day.date] || rosterState.plans[day.date]">
+            {{ rosterState.duties[day.date]?.profileName ?? rosterState.plans[day.date]?.profileName }}
           </span>
         </button>
       </div>
@@ -98,31 +99,115 @@
           {{ task }}
         </label>
 
-        <button class="submit-btn" @click="submitDuty">
-          Complete Duty
+        <label v-if="canBookWholeWeek" class="task task-booking">
+          <input v-model="bookWholeWeek" type="checkbox" />
+          Book the week
+        </label>
+
+        <button class="submit-btn" :disabled="rosterState.submittingDuty" @click="submitDuty">
+          {{
+            rosterState.submittingDuty
+              ? "Saving..."
+              : bookWholeWeek
+                ? "Confirm Week Booking"
+                : "Complete Duty"
+          }}
         </button>
 
-        <button class="cancel-btn" @click="selectedDate = null">
+        <button
+          class="cancel-btn"
+          @click="
+            selectedDate = null;
+            bookWholeWeek = false;
+          "
+        >
           Cancel
         </button>
       </div>
     </div>
+
+    <div v-if="isEditingProfile" class="modal-backdrop" @click.self="closeProfileEditor">
+      <div class="modal">
+        <h3>Edit Profile</h3>
+
+        <form class="profile-form" @submit.prevent="saveProfile">
+          <label class="field">
+            <span>Name</span>
+            <input
+              v-model="profileForm.name"
+              type="text"
+              maxlength="40"
+              autocomplete="name"
+              placeholder="Enter name"
+            />
+          </label>
+
+          <label class="field">
+            <span>4-digit PIN</span>
+            <input
+              v-model="profileForm.password"
+              type="password"
+              inputmode="numeric"
+              maxlength="4"
+              autocomplete="one-time-code"
+              placeholder="0000"
+              @input="handleProfilePinInput"
+            />
+          </label>
+
+          <label class="field">
+            <span>Completion colour</span>
+            <div class="color-field">
+              <input
+                v-model="profileForm.completionColor"
+                class="color-picker"
+                type="color"
+              />
+              <span class="color-value">{{ profileForm.completionColor }}</span>
+            </div>
+          </label>
+
+          <p v-if="profileError" class="page-error modal-error">{{ profileError }}</p>
+
+          <button class="submit-btn" type="submit" :disabled="rosterState.savingProfile">
+            {{ rosterState.savingProfile ? "Saving..." : "Save Profile" }}
+          </button>
+
+          <button class="cancel-btn" type="button" @click="closeProfileEditor">
+            Cancel
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <p v-if="rosterState.error" class="page-error">{{ rosterState.error }}</p>
   </div>
 </template>
 
 <script setup>
 import { computed, ref } from "vue";
+import { resolveProfilePic } from "../data/profilePicMap";
 import {
+  bookWeekPlan,
   clearSelectedProfile,
   completeDuty,
-  rosterStore,
-} from "../store/rosterStore";
+  rosterState,
+  updateSelectedProfile,
+} from "../lib/rosterState";
 
 const selectedDate = ref(null);
 const checkedTasks = ref([]);
+const bookWholeWeek = ref(false);
+const isEditingProfile = ref(false);
+const profileForm = ref({
+  name: "",
+  password: "",
+  completionColor: "#f97316",
+});
+const profileError = ref("");
 const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-const currentUser = computed(() => rosterStore.selectedProfile);
+const currentUser = computed(() => rosterState.selectedProfile);
 const selectedMonthIndex = ref(new Date().getMonth());
 
 const year = computed(() => {
@@ -176,41 +261,143 @@ const tasks = computed(() => {
 });
 
 const getDutyCardStyle = (date) => {
-  const duty = rosterStore.duties[date];
+  const duty = rosterState.duties[date];
+  const plan = rosterState.plans[date];
 
-  if (!duty) {
+  if (!duty && !plan) {
     return undefined;
   }
 
-  const profile = rosterStore.profiles.find((entry) => entry.id === duty.profileId);
+  const profileId = duty?.profileId ?? plan?.profileId;
+  const profile = rosterState.profiles.find((entry) => entry.id === profileId);
 
-  return profile?.completionColor
-    ? { backgroundColor: profile.completionColor }
-    : undefined;
+  if (!profile?.completionColor) {
+    return undefined;
+  }
+
+  if (duty) {
+    return { backgroundColor: profile.completionColor };
+  }
+
+  return {
+    borderColor: profile.completionColor,
+    boxShadow: `inset 0 0 0 2px ${profile.completionColor}`,
+    backgroundColor: `${profile.completionColor}22`,
+  };
 };
 
+const getDutyCardClass = (date) => ({
+  completed: !!rosterState.duties[date],
+  planned: !rosterState.duties[date] && !!rosterState.plans[date],
+});
+
+const isMonday = computed(() => {
+  if (!selectedDate.value) {
+    return false;
+  }
+
+  const [year, month, day] = selectedDate.value.split("-").map(Number);
+  return new Date(year, month - 1, day).getDay() === 1;
+});
+
+const canBookWholeWeek = computed(() => {
+  if (!selectedDate.value || !isMonday.value) {
+    return false;
+  }
+
+  return !rosterState.duties[selectedDate.value]?.completed && !rosterState.plans[selectedDate.value];
+});
+
 const openChecklist = (date) => {
-  if (rosterStore.duties[date]?.completed) {
+  if (rosterState.duties[date]?.completed) {
     return;
   }
 
   selectedDate.value = date;
   checkedTasks.value = [];
+  bookWholeWeek.value = false;
+};
+
+const openProfileEditor = () => {
+  if (!currentUser.value) {
+    return;
+  }
+
+  selectedDate.value = null;
+  profileForm.value = {
+    name: currentUser.value.name,
+    password: String(currentUser.value.password ?? ""),
+    completionColor: currentUser.value.completionColor ?? "#f97316",
+  };
+  profileError.value = "";
+  isEditingProfile.value = true;
+};
+
+const closeProfileEditor = () => {
+  isEditingProfile.value = false;
+  profileError.value = "";
+};
+
+const handleProfilePinInput = () => {
+  profileForm.value.password = profileForm.value.password.replace(/\D/g, "").slice(0, 4);
+  profileError.value = "";
+};
+
+const saveProfile = async () => {
+  const trimmedName = profileForm.value.name.trim();
+
+  if (!trimmedName) {
+    profileError.value = "Name is required.";
+    return;
+  }
+
+  if (!/^\d{4}$/.test(profileForm.value.password)) {
+    profileError.value = "PIN must be exactly 4 digits.";
+    return;
+  }
+
+  profileError.value = "";
+
+  const updated = await updateSelectedProfile({
+    name: trimmedName,
+    password: profileForm.value.password,
+    completionColor: profileForm.value.completionColor,
+  });
+
+  if (updated) {
+    closeProfileEditor();
+  }
 };
 
 const logout = () => {
   selectedDate.value = null;
+  bookWholeWeek.value = false;
+  closeProfileEditor();
   clearSelectedProfile();
 };
 
-const submitDuty = () => {
+const submitDuty = async () => {
+  if (bookWholeWeek.value) {
+    const booked = await bookWeekPlan(selectedDate.value);
+
+    if (booked) {
+      selectedDate.value = null;
+      bookWholeWeek.value = false;
+    }
+    return;
+  }
+
   if (checkedTasks.value.length !== tasks.value.length) {
     alert("Please complete all tasks first.");
     return;
   }
 
-  completeDuty(selectedDate.value, checkedTasks.value);
-  selectedDate.value = null;
+  const completed = await completeDuty(selectedDate.value);
+
+  if (completed) {
+    selectedDate.value = null;
+    bookWholeWeek.value = false;
+  }
 };
 </script>
 
@@ -263,6 +450,15 @@ const submitDuty = () => {
   gap: 12px;
 }
 
+.profile-trigger {
+  width: 100%;
+  border: none;
+  padding: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
 .progress-header h3 {
   margin: 4px 0 0;
 }
@@ -281,6 +477,12 @@ const submitDuty = () => {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: #9a3412;
+}
+
+.profile-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #7c6f64;
 }
 
 .progress-metrics {
@@ -377,7 +579,7 @@ const submitDuty = () => {
 
 .day-card {
   min-height: 70px;
-  border: none;
+  border: 2px solid transparent;
   border-radius: 12px;
   background: white;
   font-size: 14px;
@@ -386,6 +588,14 @@ const submitDuty = () => {
   gap: 6px;
   padding: 8px;
   text-align: left;
+}
+
+.day-card.completed {
+  color: white;
+}
+
+.day-card.planned {
+  color: #431407;
 }
 
 .day-card.placeholder {
@@ -411,11 +621,73 @@ const submitDuty = () => {
   padding: 20px;
   border-radius: 20px;
   background: white;
+  box-sizing: border-box;
 }
 
 .task {
   display: block;
   margin: 14px 0;
+}
+
+.task-booking {
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid #fed7aa;
+  font-weight: 600;
+}
+
+.profile-form {
+  margin-top: 16px;
+}
+
+.field {
+  display: block;
+  margin-top: 14px;
+}
+
+.field span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #7c6f64;
+}
+
+.field input {
+  width: 100%;
+  border: 1px solid #fed7aa;
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 16px;
+  box-sizing: border-box;
+}
+
+.color-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.color-picker {
+  width: 56px !important;
+  min-width: 56px;
+  height: 44px;
+  border: 1px solid #fed7aa;
+  border-radius: 14px;
+  padding: 4px !important;
+  background: white;
+  cursor: pointer;
+}
+
+.color-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #7c6f64;
+  text-transform: uppercase;
+}
+
+.modal-error {
+  margin-bottom: 0;
 }
 
 .submit-btn,
@@ -435,6 +707,16 @@ const submitDuty = () => {
 
 .cancel-btn {
   background: #eee;
+}
+
+.submit-btn:disabled {
+  opacity: 0.7;
+}
+
+.page-error {
+  margin-top: 16px;
+  color: #b91c1c;
+  text-align: center;
 }
 
 @media (max-width: 640px) {
