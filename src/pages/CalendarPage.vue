@@ -99,26 +99,36 @@
           {{ task }}
         </label>
 
-        <label v-if="canBookWholeWeek" class="task task-booking">
-          <input v-model="bookWholeWeek" type="checkbox" />
-          Book the week
-        </label>
-
         <button class="submit-btn" :disabled="rosterState.submittingDuty" @click="submitDuty">
-          {{
-            rosterState.submittingDuty
-              ? "Saving..."
-              : bookWholeWeek
-                ? "Confirm Week Booking"
-                : "Complete Duty"
-          }}
+          {{ rosterState.submittingDuty ? "Saving..." : "comeplete task" }}
         </button>
+
+        <button
+          v-if="canBookWholeWeek"
+          class="secondary-btn"
+          :disabled="rosterState.submittingDuty"
+          @click="handleBookWholeWeek"
+        >
+          {{ rosterState.submittingDuty ? "Saving..." : "book for the week" }}
+        </button>
+
+        <button
+          v-else-if="canUnbookWholeWeek"
+          class="secondary-btn"
+          :disabled="rosterState.submittingDuty"
+          @click="handleUnbookWholeWeek"
+        >
+          {{ rosterState.submittingDuty ? "Saving..." : "unbook for the week" }}
+        </button>
+
+        <p v-else-if="selectedMondayPlan" class="booking-note">
+          booked by {{ selectedMondayPlan.profileName }}
+        </p>
 
         <button
           class="cancel-btn"
           @click="
             selectedDate = null;
-            bookWholeWeek = false;
           "
         >
           Cancel
@@ -192,12 +202,12 @@ import {
   clearSelectedProfile,
   completeDuty,
   rosterState,
+  unbookWeekPlan,
   updateSelectedProfile,
 } from "../lib/rosterState";
 
 const selectedDate = ref(null);
 const checkedTasks = ref([]);
-const bookWholeWeek = ref(false);
 const isEditingProfile = ref(false);
 const profileForm = ref({
   name: "",
@@ -308,6 +318,26 @@ const canBookWholeWeek = computed(() => {
   return !rosterState.duties[selectedDate.value]?.completed && !rosterState.plans[selectedDate.value];
 });
 
+const selectedMondayPlan = computed(() => {
+  if (!selectedDate.value || !isMonday.value) {
+    return null;
+  }
+
+  const plan = rosterState.plans[selectedDate.value];
+
+  if (!plan || plan.startDate !== selectedDate.value) {
+    return null;
+  }
+
+  return plan;
+});
+
+const canUnbookWholeWeek = computed(
+  () =>
+    !!selectedMondayPlan.value &&
+    selectedMondayPlan.value.profileId === currentUser.value?.id
+);
+
 const openChecklist = (date) => {
   if (rosterState.duties[date]?.completed) {
     return;
@@ -315,7 +345,6 @@ const openChecklist = (date) => {
 
   selectedDate.value = date;
   checkedTasks.value = [];
-  bookWholeWeek.value = false;
 };
 
 const openProfileEditor = () => {
@@ -371,21 +400,35 @@ const saveProfile = async () => {
 
 const logout = () => {
   selectedDate.value = null;
-  bookWholeWeek.value = false;
   closeProfileEditor();
   clearSelectedProfile();
 };
 
-const submitDuty = async () => {
-  if (bookWholeWeek.value) {
-    const booked = await bookWeekPlan(selectedDate.value);
-
-    if (booked) {
-      selectedDate.value = null;
-      bookWholeWeek.value = false;
-    }
+const handleBookWholeWeek = async () => {
+  if (!selectedDate.value || !canBookWholeWeek.value) {
     return;
   }
+
+  const booked = await bookWeekPlan(selectedDate.value);
+
+  if (booked) {
+    selectedDate.value = null;
+  }
+};
+
+const handleUnbookWholeWeek = async () => {
+  if (!selectedDate.value || !canUnbookWholeWeek.value) {
+    return;
+  }
+
+  const unbooked = await unbookWeekPlan(selectedDate.value);
+
+  if (unbooked) {
+    selectedDate.value = null;
+  }
+};
+
+const submitDuty = async () => {
 
   if (checkedTasks.value.length !== tasks.value.length) {
     alert("Please complete all tasks first.");
@@ -396,7 +439,6 @@ const submitDuty = async () => {
 
   if (completed) {
     selectedDate.value = null;
-    bookWholeWeek.value = false;
   }
 };
 </script>
@@ -629,13 +671,6 @@ const submitDuty = async () => {
   margin: 14px 0;
 }
 
-.task-booking {
-  margin-top: 20px;
-  padding-top: 14px;
-  border-top: 1px solid #fed7aa;
-  font-weight: 600;
-}
-
 .profile-form {
   margin-top: 16px;
 }
@@ -691,6 +726,7 @@ const submitDuty = async () => {
 }
 
 .submit-btn,
+.secondary-btn,
 .cancel-btn {
   width: 100%;
   border: none;
@@ -705,11 +741,25 @@ const submitDuty = async () => {
   color: white;
 }
 
+.secondary-btn {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
 .cancel-btn {
   background: #eee;
 }
 
-.submit-btn:disabled {
+.booking-note {
+  margin: 10px 0 0;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: #9a3412;
+}
+
+.submit-btn:disabled,
+.secondary-btn:disabled {
   opacity: 0.7;
 }
 

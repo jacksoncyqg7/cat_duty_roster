@@ -35,7 +35,7 @@ alter table public.plans enable row level security;
 grant usage on schema public to anon;
 grant select, update on public.roster to anon;
 grant select, insert, update on public.duties to anon;
-grant select, insert, update on public.plans to anon;
+grant select, insert, update, delete on public.plans to anon;
 
 drop policy if exists "Allow anonymous read roster" on public.roster;
 create policy "Allow anonymous read roster"
@@ -95,3 +95,10 @@ for update
 to anon
 using (true)
 with check (true);
+
+drop policy if exists "Allow anonymous delete plans" on public.plans;
+create policy "Allow anonymous delete plans"
+on public.plans
+for delete
+to anon
+using (true);

@@ -502,6 +502,56 @@ export const bookWeekPlan = async (startDate) => {
   return true;
 };
 
+export const unbookWeekPlan = async (startDate) => {
+  if (!rosterState.selectedProfile || rosterState.submittingDuty) {
+    return false;
+  }
+
+  const mondayPlan = rosterState.plans[startDate];
+
+  if (!mondayPlan || mondayPlan.startDate !== startDate) {
+    rosterState.error = "No weekly plan starts on this date.";
+    return false;
+  }
+
+  if (mondayPlan.profileId !== rosterState.selectedProfile.id) {
+    rosterState.error = "Only the roster who booked this week can unreserve it.";
+    return false;
+  }
+
+  rosterState.submittingDuty = true;
+  rosterState.error = "";
+
+  try {
+    const { error } = await supabase
+      .from("plans")
+      .delete()
+      .eq("user_id", rosterState.selectedProfile.id)
+      .eq("start_date", startDate)
+      .eq("completion_date", mondayPlan.completionDate);
+
+    if (error) {
+      throw error;
+    }
+
+    const nextPlans = { ...rosterState.plans };
+
+    for (const date of getDateRange(startDate, mondayPlan.completionDate)) {
+      delete nextPlans[date];
+    }
+
+    rosterState.plans = nextPlans;
+  } catch (error) {
+    rosterState.error = error.message ?? "Failed to unreserve week.";
+    return false;
+  } finally {
+    rosterState.submittingDuty = false;
+    syncSelectedProfile();
+  }
+
+  return true;
+};
+
 export const updateSelectedProfile = async ({ name, password, completionColor }) => {
   if (!rosterState.selectedProfile) {
     rosterState.error = "No profile selected.";
